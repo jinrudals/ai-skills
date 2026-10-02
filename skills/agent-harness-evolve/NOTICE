@@ -1,0 +1,39 @@
+agent-harness-evolve
+Copyright 2025 robin (original work, https://github.com/revfactory/harness)
+Copyright 2025 Hanon Systems (modifications)
+
+This product includes software originally developed as part of the
+"harness" Claude Code plugin skill set, specifically its `evolve` skill:
+
+    https://github.com/revfactory/harness/blob/92d9f1b29e7af81acebf51a9fcd1832e739a1414/skills/evolve/SKILL.md
+
+at commit 92d9f1b29e7af81acebf51a9fcd1832e739a1414, licensed under the
+Apache License, Version 2.0 (see LICENSE in this directory for the
+full text).
+
+== Summary of modifications ==
+
+This directory is a derivative work that rewrites the original
+`evolve` skill to be agentic-tool-agnostic, matching the companion
+`skills/agent-harness/` skill it hands off to and from. In particular:
+
+- Replaced fixed Claude Code paths (`.claude/agents/`, `.claude/skills/`,
+  `CLAUDE.md`) with guidance to use whatever agent/skill convention the
+  host project already has.
+- Replaced the reference to the upstream `harness` skill's "v1 to v2
+  migration" procedure (a leftover-API cleanup step specific to two
+  prior versions of the Claude Code plugin) with a pointer to
+  `agent-harness`'s "Porting an existing tool-specific harness" guidance.
+- Renamed the skill from `evolve` to `agent-harness-evolve`, and renamed
+  all references to the companion skill from `harness` to
+  `agent-harness`, to avoid colliding with the upstream Claude Code
+  plugin's own namespace.
+- Translated the document from Korean to English; all five workflow
+  phases (collect the delta, classify feedback, generalize and apply,
+  update the change log, report) and the three guiding principles are
+  preserved from the original.
+- Added this NOTICE file and copied LICENSE verbatim, as required by
+  the Apache License, Version 2.0.
+
+See `skills/agent-harness/NOTICE` for the fuller summary of changes made
+across the whole ported harness (this skill's sibling).

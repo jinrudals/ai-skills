@@ -1,0 +1,59 @@
+agent-harness
+Copyright 2025 robin (original work, https://github.com/revfactory/harness)
+Copyright 2025 Hanon Systems (modifications)
+
+This product includes software originally developed as part of the
+"harness" Claude Code plugin skill set:
+
+    https://github.com/revfactory/harness
+
+at commit 92d9f1b29e7af81acebf51a9fcd1832e739a1414, licensed under the
+Apache License, Version 2.0 (see LICENSE in this directory for the
+full text).
+
+== Summary of modifications ==
+
+This directory (`skills/agent-harness/` and `skills/agent-harness-evolve/`)
+is a derivative work that rewrites the original content to be
+agentic-tool-agnostic, for use with the `npx skills add`-style
+Agent Skills convention instead of exclusively with Claude Code. In
+particular:
+
+- Replaced every reference to Claude Code's proprietary multi-agent
+  APIs (the `Workflow` tool and its `agent()`/`pipeline()`/`parallel()`/
+  `phase()` script primitives, `Agent(name:)` + `SendMessage` +
+  `TaskCreate`/`TaskUpdate`/`TaskList`/`TaskGet`/`TaskStop`,
+  `TeamCreate`/`TeamDelete`, and the `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`
+  flag) with three portable execution primitives described in
+  vendor-neutral terms: checklist-driven delegation, file-mediated
+  coordination, and one-shot delegation.
+- Replaced fixed Claude Code paths (`.claude/agents/`, `.claude/skills/`,
+  `CLAUDE.md`) with guidance to use whatever agent/skill convention the
+  host project already has, defaulting to `AGENTS/` and `skills/`.
+- Renamed the Claude-specific model tiers `fable`/`opus`/`sonnet` to the
+  vendor-neutral tiers `high-capability`/`general-purpose`/`fast`, with
+  the same selection criteria, and added guidance to map these tiers to
+  whatever models the host tool exposes.
+- Rewrote all `Workflow`-script pseudocode examples (in
+  `references/workflow-recipes.md` and `references/team-examples.md`)
+  from literal JavaScript tied to the `Workflow` tool's API into
+  generic, host-tool-neutral pseudocode.
+- Dropped the upstream "v1 to v2 migration" section (`execution-modes.md`
+  §5 in the original), which only concerned migrating between two prior
+  versions of the Claude Code plugin, and replaced it with a short note
+  on porting an existing tool-specific harness to this skill's portable
+  primitives.
+- Renamed the skills from `harness`/`evolve` to `agent-harness`/
+  `agent-harness-evolve` to avoid colliding with the upstream Claude
+  Code plugin's own `/plugin install harness` namespace.
+- Added this NOTICE file and copied LICENSE verbatim, as required by
+  the Apache License, Version 2.0.
+
+All six team-architecture patterns, the quality-verification patterns
+(adversarial verification, judge panels, loop-until-dry, multi-angle
+sweeps, gap review), the QA-agent integration-coherence guidance, and
+the skill-writing/testing guidance are preserved from the original work,
+adapted only to remove tool-specific API calls.
+
+See `skills/agent-harness/SKILL.md`'s "Attribution" section for a
+pointer back to this file.
