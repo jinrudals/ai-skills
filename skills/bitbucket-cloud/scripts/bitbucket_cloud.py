@@ -450,5 +450,57 @@ register(Cmd("api", "", "", "", help="raw METHOD PATH request (non-GET needs --y
              args=(arg("method"), arg("path"), arg("--body"), arg("--body-file"))))
 
 
+REPO = "/repositories/{ws}/{repo}"
+R_READ = _scopes("read:repository")
+
+
+def _branches(args, cmd):
+    params = None
+    if args.query:
+        params = {"q": 'name~"{}"'.format(args.query.replace('"', '\\"'))}
+    return run(cmd, args, params=params)
+
+
+def _branch_create(args, cmd):
+    body = {"name": args.name, "target": {"hash": args.from_commit}}
+    return run(cmd, args, body=body)
+
+
+def _commit_list(args, cmd):
+    path = resolve_path(cmd, args)
+    if args.revision:
+        path += "/" + quote(args.revision)
+    return run(cmd, args, path=path)
+
+
+def _commit_file(args, cmd):
+    path = f"{resolve_path(cmd, args)}/{quote(args.ref)}/{quote_path(args.path)}"
+    return run(cmd, args, path=path)
+
+
+register(Cmd("repo", "list", "GET", "/repositories/{ws}", R_READ, list_result=True,
+             help="list repositories in the workspace"))
+register(Cmd("repo", "get", "GET", REPO, R_READ, help="show one repository"))
+register(Cmd("repo", "branches", "GET", REPO + "/refs/branches", R_READ, list_result=True,
+             handler=_branches, args=(arg("--query", help="filter by branch name"),),
+             help="list branches"))
+register(Cmd("repo", "branch-create", "POST", REPO + "/refs/branches",
+             _scopes("write:repository", "read:repository"), handler=_branch_create,
+             args=(arg("name"), arg("--from", dest="from_commit", required=True,
+                                    help="commit hash to branch from")),
+             help="create a branch"))
+register(Cmd("repo", "tags", "GET", REPO + "/refs/tags", R_READ, list_result=True,
+             help="list tags"))
+register(Cmd("commit", "list", "GET", REPO + "/commits", R_READ, list_result=True,
+             handler=_commit_list, args=(arg("--revision", help="branch, tag or hash"),),
+             help="list commits"))
+register(Cmd("commit", "get", "GET", REPO + "/commit/{sha}", R_READ, help="show one commit"))
+register(Cmd("commit", "diff", "GET", REPO + "/diff/{spec}", R_READ, text=True,
+             help="diff of a commit or a..b spec"))
+register(Cmd("commit", "file", "GET", REPO + "/src", R_READ, text=True,
+             handler=_commit_file, args=(arg("path"), arg("--ref", required=True)),
+             help="file content at a ref"))
+
+
 if __name__ == "__main__":
     sys.exit(main())

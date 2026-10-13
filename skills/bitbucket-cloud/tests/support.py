@@ -1,8 +1,11 @@
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import sys
+import tempfile
+import unittest
 import urllib.error
 from pathlib import Path
 from unittest import mock
@@ -60,6 +63,38 @@ def fake_urlopen(responses):
 
     opener.calls = []
     return opener
+
+
+class CliCase(unittest.TestCase):
+    """Base class: run_main(argv, responses) drives bb.main with a fake HTTP layer."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.cfg = str(Path(self._tmp.name) / "credentials.json")
+
+    def run_main(self, argv, responses=(), **envvars):
+        opener = fake_urlopen(list(responses))
+        out, err = io.StringIO(), io.StringIO()
+        base = dict(
+            BITBUCKET_EMAIL="a@b.c",
+            BITBUCKET_API_TOKEN="SECRET123",
+            BITBUCKET_WORKSPACE="ws",
+            BITBUCKET_CLOUD_CONFIG=self.cfg,
+        )
+        base.update(envvars)
+        code = None
+        with env(**base), mock.patch.object(bb, "_open", opener), contextlib.redirect_stdout(
+            out
+        ), contextlib.redirect_stderr(err):
+            try:
+                code = bb.main(argv)
+            except SystemExit as e:
+                code = e.code
+        return code, out.getvalue(), err.getvalue(), opener
+
+    def sent_json(self, opener, index=0):
+        return json.loads(opener.calls[index][3].decode("utf-8"))
 
 
 @contextlib.contextmanager
