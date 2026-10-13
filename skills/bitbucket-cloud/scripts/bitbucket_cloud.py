@@ -6,14 +6,18 @@ BITBUCKET_WORKSPACE) or the config file written by `configure`.
 Runs on Python 3.8+ on Windows and POSIX using only the standard library.
 """
 
+import argparse
 import base64
 import json
 import os
+import string
 import sys
 import urllib.error
 import urllib.parse
 import urllib.request
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable, Optional
 
 BASE = "https://api.bitbucket.org/2.0"
 API_HOST = "api.bitbucket.org"
@@ -222,3 +226,229 @@ def emit(obj):
 
 def emit_text(text):
     sys.stdout.write(text if text.endswith("\n") else text + "\n")
+
+
+# ------------------------------------------------------------- framework ----
+
+_SCOPE_NAMES = {
+    "repository": "rwad", "pullrequest": "rw", "project": "ra", "workspace": "ra",
+    "user": "rw", "pipeline": "rwa", "runner": "rw", "issue": "rwd",
+    "webhook": "rwd", "snippet": "rwd", "ssh-key": "rwd", "gpg-key": "rwd",
+    "permission": "rwd",
+}
+_PREFIX = {"r": "read", "w": "write", "a": "admin", "d": "delete"}
+KNOWN_SCOPES = frozenset(
+    f"{_PREFIX[k]}:{name}:bitbucket" for name, kinds in _SCOPE_NAMES.items() for k in kinds
+)
+
+
+def _scopes(*names):
+    return tuple(f"{n}:bitbucket" for n in names)
+
+
+_READ_ONLY = _scopes(
+    "read:repository", "read:pullrequest", "read:pipeline", "read:issue",
+    "read:webhook", "read:user", "read:workspace",
+)
+_DEV = _READ_ONLY + _scopes(
+    "write:repository", "write:pullrequest", "write:pipeline", "write:issue"
+)
+PRESETS = {
+    "read-only": _READ_ONLY,
+    "dev": _DEV,
+    "admin": _DEV + _scopes(
+        "write:webhook", "admin:repository", "read:permission",
+        "write:permission", "delete:webhook", "delete:issue",
+    ),
+}
+
+
+@dataclass
+class ArgSpec:
+    names: tuple
+    opts: dict = field(default_factory=dict)
+
+
+def arg(*names, **opts):
+    return ArgSpec(names, opts)
+
+
+@dataclass
+class Cmd:
+    area: str
+    action: str
+    method: str
+    path: str
+    scopes: tuple = ()
+    destructive: bool = False
+    list_result: bool = False
+    text: bool = False
+    handler: Optional[Callable] = None
+    args: tuple = ()
+    help: str = ""
+
+    @property
+    def key(self):
+        return f"{self.area} {self.action}".strip()
+
+
+COMMANDS = []
+
+
+def register(cmd):
+    COMMANDS.append(cmd)
+
+
+def _placeholders(path):
+    return [n for _, n, _, _ in string.Formatter().parse(path) if n and n != "ws"]
+
+
+def workspace(args):
+    ws = (getattr(args, "workspace", None) or setting("workspace")).strip()
+    if not ws:
+        raise ConfigError("no workspace; pass --workspace or run `configure --workspace NAME`")
+    return ws
+
+
+def resolve_path(cmd, args):
+    values = {n: quote(getattr(args, n)) for n in _placeholders(cmd.path)}
+    if "{ws}" in cmd.path:
+        values["ws"] = quote(workspace(args))
+    return cmd.path.format(**values)
+
+
+def require_yes(args, method, url, body):
+    if getattr(args, "yes", False):
+        return
+    emit({"dry_run": True, "method": method, "url": url, "body": body})
+    print("not executed: re-run with --yes to send this request", file=sys.stderr)
+    raise SystemExit(5)
+
+
+def run(cmd, args, *, body=None, params=None, path=None, method=None, destructive=None):
+    method = method or cmd.method
+    path = path if path is not None else resolve_path(cmd, args)
+    gated = cmd.destructive if destructive is None else destructive
+    if gated:
+        url = path if path.startswith("http") else BASE + path
+        require_yes(args, method, url, body)
+    if cmd.list_result and method == "GET":
+        emit(paginate(path, params, args.limit))
+        return 0
+    res = request(method, path, params=params, body=body, raw=cmd.text)
+    if cmd.text:
+        emit_text(res or "")
+    else:
+        emit(res if res is not None else {"ok": True})
+    return 0
+
+
+def scope_hint(command_key):
+    for cmd in COMMANDS:
+        if cmd.key == command_key and cmd.scopes:
+            return f"{command_key} needs scopes: {', '.join(cmd.scopes)}"
+    return f"{command_key}: check the token's scopes (run `scopes`)"
+
+
+def _add_common(parser):
+    parser.add_argument("--workspace", help="Bitbucket workspace slug (default: configured)")
+    parser.add_argument("--limit", type=int, default=100, help="max items for list commands")
+    parser.add_argument("--yes", action="store_true", help="confirm destructive requests")
+
+
+def build_parser():
+    parser = argparse.ArgumentParser(
+        prog="bitbucket_cloud.py", description="Bitbucket Cloud REST CLI"
+    )
+    sub = parser.add_subparsers(dest="area", metavar="AREA")
+    sub.required = True
+    groups = {}
+    for cmd in COMMANDS:
+        if cmd.action:
+            if cmd.area not in groups:
+                area_parser = sub.add_parser(cmd.area, help=f"{cmd.area} commands")
+                groups[cmd.area] = area_parser.add_subparsers(dest="action", metavar="ACTION")
+                groups[cmd.area].required = True
+            leaf = groups[cmd.area].add_parser(cmd.action, help=cmd.help)
+        else:
+            leaf = sub.add_parser(cmd.area, help=cmd.help)
+        _add_common(leaf)
+        for name in _placeholders(cmd.path):
+            leaf.add_argument(name)
+        for spec in cmd.args:
+            leaf.add_argument(*spec.names, **spec.opts)
+        leaf.set_defaults(_cmd=cmd)
+    return parser
+
+
+def main(argv=None):
+    setup_stdio()
+    args = build_parser().parse_args(argv)
+    cmd = args._cmd
+    try:
+        rc = cmd.handler(args, cmd) if cmd.handler else run(cmd, args)
+    except ConfigError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 2
+    except ApiError as e:
+        print(f"error: {e}", file=sys.stderr)
+        if e.status in (401, 403):
+            if e.status == 401:
+                print("hint: check the email/token (run `check`)", file=sys.stderr)
+            else:
+                print(f"hint: {scope_hint(cmd.key)}", file=sys.stderr)
+            return 3
+        return 4
+    return rc or 0
+
+
+# ------------------------------------------------------------- meta cmds ----
+
+
+def _check(args, cmd):
+    calls = [("GET /user", "/user", "read:user:bitbucket")]
+    ws = (getattr(args, "workspace", None) or setting("workspace")).strip()
+    if ws:
+        calls.append((f"GET /workspaces/{ws}", f"/workspaces/{quote(ws)}", "read:workspace:bitbucket"))
+    rows, code = [], 0
+    for label, path, scope in calls:
+        try:
+            request("GET", path)
+            rows.append({"call": label, "ok": True})
+        except ApiError as e:
+            code = code or (3 if e.status in (401, 403) else 4)
+            rows.append({"call": label, "ok": False, "status": e.status,
+                         "message": e.message, "hint": f"needs scope: {scope}"})
+    emit(rows)
+    return code
+
+
+def _scopes_cmd(args, cmd):
+    if args.preset:
+        emit({"preset": args.preset, "scopes": list(PRESETS[args.preset])})
+    else:
+        emit([{"command": c.key, "scopes": list(c.scopes)} for c in COMMANDS])
+    return 0
+
+
+def _api_cmd(args, cmd):
+    method = args.method.upper()
+    body = read_body(args)
+    path = args.path if args.path.startswith("http") else "/" + args.path.lstrip("/")
+    return run(cmd, args, body=body, path=path, method=method, destructive=method != "GET")
+
+
+register(Cmd("configure", "", "", "", help="save credentials to the config file",
+             handler=lambda a, c: configure(a),
+             args=(arg("--email"), arg("--token"))))
+register(Cmd("check", "", "GET", "/user", scopes=_scopes("read:user", "read:workspace"),
+             help="verify credentials and workspace access", handler=_check))
+register(Cmd("scopes", "", "", "", help="show required scopes per command or a preset",
+             handler=_scopes_cmd, args=(arg("--preset", choices=sorted(PRESETS)),)))
+register(Cmd("api", "", "", "", help="raw METHOD PATH request (non-GET needs --yes)",
+             handler=_api_cmd,
+             args=(arg("method"), arg("path"), arg("--body"), arg("--body-file"))))
+
+
+if __name__ == "__main__":
+    sys.exit(main())
