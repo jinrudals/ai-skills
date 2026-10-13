@@ -636,6 +636,147 @@ register(Cmd("task", "update", "PUT", PRS + "/{pr_id}/tasks/{task_id}", PR_READ,
 register(Cmd("task", "delete", "DELETE", PRS + "/{pr_id}/tasks/{task_id}", PR_READ,
              destructive=True, help="delete a task (needs --yes)"))
 
+PIPES = REPO + "/pipelines/"
+PIPE_READ = _scopes("read:pipeline")
+PIPE_RW = _scopes("read:pipeline", "write:pipeline")
+HOOKS = REPO + "/hooks"
+PERMS = REPO + "/permissions-config"
+ISSUES = REPO + "/issues"
+ISSUE_READ = _scopes("read:issue")
+ISSUE_RW = _scopes("read:issue", "write:issue")
+
+
+def _pipeline_trigger(args, cmd):
+    target = {"type": "pipeline_ref_target", "ref_type": "branch", "ref_name": args.branch}
+    if args.pattern:
+        target["selector"] = {"type": "custom", "pattern": args.pattern}
+    body = {"target": target}
+    variables = []
+    for item in args.var:
+        key, sep, value = item.partition("=")
+        if not sep or not key:
+            raise ConfigError(f"--var expects KEY=VALUE, got {item!r}")
+        variables.append({"key": key, "value": value})
+    if variables:
+        body["variables"] = variables
+    return run(cmd, args, body=body)
+
+
+def _pipeline_log(args, cmd):
+    base = resolve_path(cmd, args)
+    if not args.step:
+        emit(paginate(base + "/steps/", None, args.limit))
+        return 0
+    emit_text(request("GET", f"{base}/steps/{quote(args.step)}/log", raw=True) or "")
+    return 0
+
+
+def _webhook_create(args, cmd):
+    body = {"description": args.description or "", "url": args.url, "active": True,
+            "events": args.event}
+    return run(cmd, args, body=body)
+
+
+def _perm_target(args):
+    if bool(args.user) == bool(args.group):
+        raise ConfigError("pass exactly one of --user or --group")
+    kind, ident = ("users", args.user) if args.user else ("groups", args.group)
+    return f"/{kind}/{quote(ident)}"
+
+
+def _perm_list(args, cmd):
+    base = resolve_path(cmd, args)
+    emit({
+        "users": paginate(base + "/users", None, args.limit),
+        "groups": paginate(base + "/groups", None, args.limit),
+    })
+    return 0
+
+
+def _perm_set(args, cmd):
+    return run(cmd, args, path=resolve_path(cmd, args) + _perm_target(args),
+               body={"permission": args.permission})
+
+
+def _perm_remove(args, cmd):
+    return run(cmd, args, path=resolve_path(cmd, args) + _perm_target(args))
+
+
+def _issue_create(args, cmd):
+    body = {"title": args.title}
+    if _text(args):
+        body["content"] = {"raw": _text(args)}
+    for name in ("kind", "priority"):
+        if getattr(args, name):
+            body[name] = getattr(args, name)
+    return run(cmd, args, body=body)
+
+
+def _issue_update(args, cmd):
+    body = {}
+    if args.title:
+        body["title"] = args.title
+    if _text(args):
+        body["content"] = {"raw": _text(args)}
+    if args.state:
+        body["state"] = args.state
+    if not body:
+        raise ConfigError("nothing to update: pass --title, --body or --state")
+    return run(cmd, args, body=body)
+
+
+def _issue_comment(args, cmd):
+    return run(cmd, args, body={"content": {"raw": _text(args, required=True)}})
+
+
+_PERM_WHO = (arg("--user", help="Atlassian account id"), arg("--group", help="group slug"))
+register(Cmd("pipeline", "list", "GET", PIPES, PIPE_READ, list_result=True,
+             handler=lambda a, c: run(c, a, params={"sort": "-created_on"}),
+             help="list pipelines, newest first"))
+register(Cmd("pipeline", "get", "GET", PIPES + "{uuid}", PIPE_READ, help="show a pipeline"))
+register(Cmd("pipeline", "trigger", "POST", PIPES, PIPE_RW, destructive=True,
+             handler=_pipeline_trigger,
+             args=(arg("--branch", required=True), arg("--pattern"),
+                   arg("--var", action="append", default=[], metavar="KEY=VALUE")),
+             help="run a pipeline (needs --yes)"))
+register(Cmd("pipeline", "stop", "POST", PIPES + "{uuid}/stopPipeline",
+             _scopes("write:pipeline"), destructive=True, help="stop a pipeline (needs --yes)"))
+register(Cmd("pipeline", "log", "GET", REPO + "/pipelines/{uuid}", PIPE_READ,
+             handler=_pipeline_log, args=(arg("--step", help="step uuid; omit to list steps"),),
+             help="list steps, or print one step's log"))
+register(Cmd("webhook", "list", "GET", HOOKS, _scopes("read:webhook"), list_result=True,
+             help="list webhooks"))
+register(Cmd("webhook", "create", "POST", HOOKS, _scopes("read:webhook", "write:webhook"),
+             handler=_webhook_create,
+             args=(arg("--url", required=True),
+                   arg("--event", action="append", required=True, metavar="EVENT"),
+                   arg("--description")),
+             help="create a webhook"))
+register(Cmd("webhook", "delete", "DELETE", HOOKS + "/{uid}", _scopes("delete:webhook"),
+             destructive=True, help="delete a webhook (needs --yes)"))
+register(Cmd("perm", "list", "GET", PERMS, _scopes("read:repository"), handler=_perm_list,
+             help="list explicit user and group permissions"))
+register(Cmd("perm", "set", "PUT", PERMS, _scopes("admin:repository", "write:permission"),
+             destructive=True, handler=_perm_set,
+             args=_PERM_WHO + (arg("--permission", required=True,
+                                   choices=("read", "write", "admin")),),
+             help="grant a permission (needs --yes)"))
+register(Cmd("perm", "remove", "DELETE", PERMS,
+             _scopes("admin:repository", "delete:permission"),
+             destructive=True, handler=_perm_remove, args=_PERM_WHO,
+             help="revoke a permission (needs --yes)"))
+register(Cmd("issue", "list", "GET", ISSUES, ISSUE_READ, list_result=True, help="list issues"))
+register(Cmd("issue", "get", "GET", ISSUES + "/{id}", ISSUE_READ, help="show an issue"))
+register(Cmd("issue", "create", "POST", ISSUES, ISSUE_RW, handler=_issue_create,
+             args=(arg("--title", required=True), _DESC, arg("--body-file"),
+                   arg("--kind"), arg("--priority")),
+             help="create an issue"))
+register(Cmd("issue", "update", "PUT", ISSUES + "/{id}", ISSUE_RW, handler=_issue_update,
+             args=(arg("--title"), _DESC, arg("--body-file"), arg("--state")),
+             help="update an issue"))
+register(Cmd("issue", "comment", "POST", ISSUES + "/{id}/comments", ISSUE_RW,
+             handler=_issue_comment, args=_TEXT_ARGS, help="comment on an issue"))
+
 
 if __name__ == "__main__":
     sys.exit(main())
