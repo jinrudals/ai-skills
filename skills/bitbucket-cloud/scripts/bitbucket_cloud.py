@@ -257,8 +257,8 @@ PRESETS = {
     "read-only": _READ_ONLY,
     "dev": _DEV,
     "admin": _DEV + _scopes(
-        "write:webhook", "admin:repository", "read:permission",
-        "write:permission", "delete:webhook", "delete:issue",
+        "write:webhook", "admin:repository", "write:permission",
+        "delete:permission", "delete:webhook", "delete:issue",
     ),
 }
 
