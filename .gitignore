@@ -5,3 +5,5 @@ assets-inbox/
 *.pptx
 preview/
 *.swp
+.worktrees/
+.superpowers/
