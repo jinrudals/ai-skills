@@ -33,8 +33,51 @@ Location: `skills/bitbucket-cloud/`
   - Windows: `%APPDATA%\bitbucket-cloud\credentials.json`; the chmod step is
     skipped.
 - `check` calls `GET /user` and a workspace read, and on 403 reports which
-  scope is probably missing.
+  scope is probably missing (see Scope guide).
+- `scopes` prints the command → required-scope table, with optional
+  `--preset read-only|dev|admin` to list the scopes to select.
 - The token is never printed, logged, or included in error output.
+
+## Scope guide (`references/setup.md`)
+
+The guide tells the user exactly which scopes to select when creating the
+token. Facts verified against the Bitbucket REST intro docs:
+
+- **API token scopes are not hierarchical.** `write:repository:bitbucket` does
+  not imply `read:repository:bitbucket`, so reads must be granted
+  separately. This differs from OAuth/access-token scopes (`repository`,
+  `repository:write`, `pullrequest`, ...), which do imply each other.
+- API tokens require an expiry (max 1 year) and cannot be edited or viewed
+  after creation; a lost or under-scoped token means creating a new one.
+- Repository/project/workspace **access tokens** use the OAuth-style scope
+  names, cannot query or manipulate permissions, and are linked to a
+  resource rather than a user. `perm` therefore needs an API token.
+
+The guide contains:
+
+1. **Command → required scopes table**, one row per area/action, for example
+   `pr list` → `read:pullrequest:bitbucket`; `pr merge` →
+   `write:pullrequest:bitbucket` (+ `read:pullrequest:bitbucket`);
+   `commit diff`/`repo list` → `read:repository:bitbucket`; `pipeline
+   trigger` → `write:pipeline:bitbucket`; `webhook create` →
+   `write:webhook:bitbucket` (+ `read:webhook:bitbucket`); `perm` →
+   `read:permission:bitbucket` / `write:permission:bitbucket`; `issue` →
+   `read|write|delete:issue:bitbucket`.
+2. **Presets to copy**:
+   - *Read-only*: all `read:*:bitbucket` scopes the commands use.
+   - *Daily dev* (recommended): read-only plus `write:pullrequest`,
+     `write:repository`, `write:pipeline`, `write:issue`.
+   - *Admin* (opt-in): adds `write:webhook`, `admin:repository`,
+     `write:permission`, and the `delete:*` scopes.
+3. **Equivalent OAuth-style scopes** for access-token users.
+4. Step-by-step token creation (Bitbucket → Personal settings → API tokens)
+   and the Basic-vs-Bearer note.
+5. **Troubleshooting**: a 403 from the CLI names the likely missing scope
+   (the script keeps a command → scope map and prints it); the table is the
+   single source for both the doc and the script's hint.
+
+Exact endpoint-to-scope mapping per action is confirmed against each
+endpoint's page in the REST reference during implementation.
 
 ## Commands
 
@@ -89,6 +132,8 @@ pipeline, 비트버킷, 풀리퀘스트, 파이프라인).
 
 ## Testing
 
+- A test checks that every command has an entry in the scope map and that
+  each preset only contains known scope names.
 - Offline unit tests with `unittest` and a mocked opener cover: auth header
   selection, config precedence and merge, pagination, `--yes` gating,
   token redaction, UTF-8 output, and Windows config-path selection (by
