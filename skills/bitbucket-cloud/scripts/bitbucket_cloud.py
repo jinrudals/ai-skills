@@ -502,5 +502,140 @@ register(Cmd("commit", "file", "GET", REPO + "/src", R_READ, text=True,
              help="file content at a ref"))
 
 
+PRS = REPO + "/pullrequests"
+PR_READ = _scopes("read:pullrequest")
+PR_WRITE = _scopes("read:pullrequest", "write:pullrequest")
+MERGE_STRATEGIES = ("merge_commit", "squash", "fast_forward", "squash_fast_forward",
+                    "rebase_fast_forward", "rebase_merge")
+_TEXT_ARGS = (arg("--body"), arg("--body-file"))
+
+
+def _text(args, required=False):
+    text = read_body(args)
+    if required and not text:
+        raise ConfigError("provide text with --body, --body-file or --body-file -")
+    return text
+
+
+def _pr_list(args, cmd):
+    return run(cmd, args, params={"state": args.state})
+
+
+def _pr_create(args, cmd):
+    body = {
+        "title": args.title,
+        "source": {"branch": {"name": args.source}},
+        "reviewers": [{"uuid": u} for u in args.reviewer],
+        "close_source_branch": args.close_source_branch,
+    }
+    if args.dest:
+        body["destination"] = {"branch": {"name": args.dest}}
+    if _text(args):
+        body["description"] = _text(args)
+    return run(cmd, args, body=body)
+
+
+def _pr_update(args, cmd):
+    body = {}
+    if args.title:
+        body["title"] = args.title
+    if _text(args):
+        body["description"] = _text(args)
+    if args.dest:
+        body["destination"] = {"branch": {"name": args.dest}}
+    if not body:
+        raise ConfigError("nothing to update: pass --title, --description or --dest")
+    return run(cmd, args, body=body)
+
+
+def _pr_comment_add(args, cmd):
+    body = {"content": {"raw": _text(args, required=True)}}
+    if args.parent:
+        body["parent"] = {"id": args.parent}
+    return run(cmd, args, body=body)
+
+
+def _pr_merge(args, cmd):
+    body = {"type": "pullrequest_merge_parameters"}
+    if args.strategy:
+        body["merge_strategy"] = args.strategy
+    if args.message:
+        body["message"] = args.message
+    if args.close_source_branch:
+        body["close_source_branch"] = True
+    return run(cmd, args, body=body)
+
+
+def _pr_decline(args, cmd):
+    return run(cmd, args, body={"reason": args.reason} if args.reason else None)
+
+
+def _task_add(args, cmd):
+    body = {"content": {"raw": _text(args, required=True)}}
+    if args.comment:
+        body["comment"] = {"id": args.comment}
+    return run(cmd, args, body=body)
+
+
+def _task_update(args, cmd):
+    body = {}
+    if _text(args):
+        body["content"] = {"raw": _text(args)}
+    if args.state:
+        body["state"] = args.state
+    if not body:
+        raise ConfigError("nothing to update: pass --body or --state")
+    return run(cmd, args, body=body)
+
+
+_DESC = arg("--body", "--description", dest="body", help="description text")
+register(Cmd("pr", "list", "GET", PRS, PR_READ, list_result=True, handler=_pr_list,
+             args=(arg("--state", default="OPEN",
+                       choices=("OPEN", "MERGED", "DECLINED", "SUPERSEDED")),),
+             help="list pull requests"))
+register(Cmd("pr", "get", "GET", PRS + "/{id}", PR_READ, help="show a pull request"))
+register(Cmd("pr", "create", "POST", PRS, PR_WRITE, handler=_pr_create,
+             args=(arg("--title", required=True), arg("--source", required=True),
+                   arg("--dest"), _DESC, arg("--body-file"),
+                   arg("--reviewer", action="append", default=[], metavar="UUID"),
+                   arg("--close-source-branch", action="store_true")),
+             help="create a pull request"))
+register(Cmd("pr", "update", "PUT", PRS + "/{id}", PR_WRITE, handler=_pr_update,
+             args=(arg("--title"), arg("--dest"), _DESC, arg("--body-file")),
+             help="update title, description or destination"))
+register(Cmd("pr", "diff", "GET", PRS + "/{id}/diff", PR_READ, text=True,
+             help="unified diff of a pull request"))
+register(Cmd("pr", "comments", "GET", PRS + "/{id}/comments", PR_READ, list_result=True,
+             help="list comments"))
+register(Cmd("pr", "comment-add", "POST", PRS + "/{id}/comments", PR_READ,
+             handler=_pr_comment_add,
+             args=_TEXT_ARGS + (arg("--parent", type=int, help="parent comment id"),),
+             help="add a comment"))
+register(Cmd("pr", "approve", "POST", PRS + "/{id}/approve", PR_WRITE, help="approve"))
+register(Cmd("pr", "unapprove", "DELETE", PRS + "/{id}/approve", _scopes("write:pullrequest"),
+             help="remove your approval"))
+register(Cmd("pr", "request-changes", "POST", PRS + "/{id}/request-changes", PR_WRITE,
+             help="request changes"))
+register(Cmd("pr", "merge", "POST", PRS + "/{id}/merge", PR_WRITE, destructive=True,
+             handler=_pr_merge,
+             args=(arg("--strategy", choices=MERGE_STRATEGIES), arg("--message"),
+                   arg("--close-source-branch", action="store_true")),
+             help="merge a pull request (needs --yes)"))
+register(Cmd("pr", "decline", "POST", PRS + "/{id}/decline", PR_WRITE, destructive=True,
+             handler=_pr_decline, args=(arg("--reason"),),
+             help="decline a pull request (needs --yes)"))
+register(Cmd("task", "list", "GET", PRS + "/{pr_id}/tasks", PR_READ, list_result=True,
+             help="list tasks of a pull request"))
+register(Cmd("task", "add", "POST", PRS + "/{pr_id}/tasks", PR_READ, handler=_task_add,
+             args=_TEXT_ARGS + (arg("--comment", type=int, help="attach to comment id"),),
+             help="add a task"))
+register(Cmd("task", "update", "PUT", PRS + "/{pr_id}/tasks/{task_id}", PR_READ,
+             handler=_task_update,
+             args=_TEXT_ARGS + (arg("--state", choices=("RESOLVED", "UNRESOLVED")),),
+             help="change task text or state"))
+register(Cmd("task", "delete", "DELETE", PRS + "/{pr_id}/tasks/{task_id}", PR_READ,
+             destructive=True, help="delete a task (needs --yes)"))
+
+
 if __name__ == "__main__":
     sys.exit(main())
