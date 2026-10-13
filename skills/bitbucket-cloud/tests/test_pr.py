@@ -16,6 +16,24 @@ def scopes_of(key):
     return {c.key: c.scopes for c in bb.COMMANDS}[key]
 
 
+class StdinBodyTests(CliCase):
+    def test_body_file_stdin_read_once(self):
+        import io
+        from unittest import mock
+        for argv, key in (
+            (["pr", "create", "r", "--title", "t", "--source", "s", "--body-file", "-"], "description"),
+            (["issue", "create", "r", "--title", "t", "--body-file", "-"], "content"),
+            (["pr", "update", "r", "1", "--body-file", "-"], "description"),
+            (["issue", "update", "r", "1", "--body-file", "-"], "content"),
+            (["task", "update", "r", "1", "2", "--body-file", "-"], "content"),
+        ):
+            with mock.patch.object(bb.sys, "stdin", io.StringIO("안녕")):
+                code, out, err, opener = self.run_main(argv, [(200, "{}")])
+            self.assertEqual(code, 0, err)
+            sent = self.sent_json(opener)[key]
+            self.assertIn("안녕", json.dumps(sent, ensure_ascii=False), argv)
+
+
 class PrTests(CliCase):
     def send(self, argv, response=(200, "{}")):
         code, out, err, opener = self.run_main(argv, [response])

@@ -119,6 +119,22 @@ class HttpTests(unittest.TestCase):
         )
         self.assertIn("Authorization", dict(same.header_items()))
 
+    def test_redirect_drops_auth_on_http_downgrade(self):
+        handler = bb.SafeRedirectHandler()
+        req = urllib.request.Request(
+            "https://api.bitbucket.org/2.0/x", headers={"Authorization": "******"}
+        )
+        new = handler.redirect_request(
+            req, None, 302, "Found", {}, "http://api.bitbucket.org/2.0/y"
+        )
+        self.assertNotIn("Authorization", dict(new.header_items()))
+
+    def test_quote_rejects_dot_segments(self):
+        for bad in (".", ".."):
+            with self.assertRaises(bb.ConfigError):
+                bb.quote(bad)
+        self.assertEqual(bb.quote("a..b"), "a..b")
+
 
 class BodyAndOutputTests(unittest.TestCase):
     def test_read_body_strips_bom_and_reads_korean(self):

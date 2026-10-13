@@ -82,8 +82,13 @@ def configure(args):
         if val:
             data[key] = val
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    if sys.platform != "win32":
+    payload = json.dumps(data, indent=2).encode("utf-8")
+    if sys.platform == "win32":
+        path.write_bytes(payload)
+    else:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(payload)
         os.chmod(path, 0o600)
     print(f"saved {', '.join(sorted(data))} to {path}")
     return 0
@@ -104,7 +109,8 @@ class SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
 
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         new = super().redirect_request(req, fp, code, msg, headers, newurl)
-        if new is not None and urllib.parse.urlsplit(newurl).hostname != API_HOST:
+        target = urllib.parse.urlsplit(newurl)
+        if new is not None and (target.scheme != "https" or target.hostname != API_HOST):
             for name in list(new.headers):
                 if name.lower() == "authorization":
                     del new.headers[name]
@@ -127,6 +133,8 @@ def redact(text):
 
 
 def quote(segment):
+    if str(segment) in (".", ".."):
+        raise ConfigError(f"invalid path segment: {segment!r}")
     return urllib.parse.quote(str(segment), safe="")
 
 
@@ -530,8 +538,9 @@ def _pr_create(args, cmd):
     }
     if args.dest:
         body["destination"] = {"branch": {"name": args.dest}}
-    if _text(args):
-        body["description"] = _text(args)
+    text = _text(args)
+    if text:
+        body["description"] = text
     return run(cmd, args, body=body)
 
 
@@ -539,8 +548,9 @@ def _pr_update(args, cmd):
     body = {}
     if args.title:
         body["title"] = args.title
-    if _text(args):
-        body["description"] = _text(args)
+    text = _text(args)
+    if text:
+        body["description"] = text
     if args.dest:
         body["destination"] = {"branch": {"name": args.dest}}
     if not body:
@@ -579,8 +589,9 @@ def _task_add(args, cmd):
 
 def _task_update(args, cmd):
     body = {}
-    if _text(args):
-        body["content"] = {"raw": _text(args)}
+    text = _text(args)
+    if text:
+        body["content"] = {"raw": text}
     if args.state:
         body["state"] = args.state
     if not body:
@@ -704,8 +715,9 @@ def _perm_remove(args, cmd):
 
 def _issue_create(args, cmd):
     body = {"title": args.title}
-    if _text(args):
-        body["content"] = {"raw": _text(args)}
+    text = _text(args)
+    if text:
+        body["content"] = {"raw": text}
     for name in ("kind", "priority"):
         if getattr(args, name):
             body[name] = getattr(args, name)
@@ -716,8 +728,9 @@ def _issue_update(args, cmd):
     body = {}
     if args.title:
         body["title"] = args.title
-    if _text(args):
-        body["content"] = {"raw": _text(args)}
+    text = _text(args)
+    if text:
+        body["content"] = {"raw": text}
     if args.state:
         body["state"] = args.state
     if not body:

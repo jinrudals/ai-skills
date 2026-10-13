@@ -51,7 +51,7 @@ logs are plain text).
 
 ```bash
 python3 scripts/bitbucket_cloud.py repo list
-python3 scripts/bitbucket_cloud.py repo branches myrepo --query 'name ~ "feature"'
+python3 scripts/bitbucket_cloud.py repo branches myrepo --query feature
 python3 scripts/bitbucket_cloud.py repo branch-create myrepo feature/x --from main
 python3 scripts/bitbucket_cloud.py commit list myrepo --revision main
 python3 scripts/bitbucket_cloud.py commit diff myrepo main..feature/x

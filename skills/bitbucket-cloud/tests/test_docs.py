@@ -39,6 +39,9 @@ class DocsTests(unittest.TestCase):
         for area in {c.area for c in bb.COMMANDS}:
             self.assertRegex(SKILL_MD, rf"\b{re.escape(area)}\b", area)
 
+    def test_branch_query_example_is_a_plain_name_fragment(self):
+        self.assertNotIn("--query 'name", SKILL_MD)
+
     def test_reference_files_exist(self):
         for rel in ("references/api-notes.md", "examples/smoke_test.py"):
             self.assertTrue((SKILL / rel).exists(), rel)
