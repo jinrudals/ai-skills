@@ -7,7 +7,8 @@ is one self-contained skill.
 
 | Skill | What it does |
 |---|---|
-| [`atlassian-cloud`](skills/atlassian-cloud/) | Jira Cloud, Confluence Cloud, and Bitbucket Cloud via direct REST calls (no MCP, zero dependencies). Issue/page/PR CRUD, JQL/CQL search. |
+| [`atlassian-cloud`](skills/atlassian-cloud/) | Jira Cloud and Confluence Cloud via direct REST calls (no MCP, zero dependencies). Issue/page CRUD, JQL/CQL search, attachments, macros. |
+| [`bitbucket-cloud`](skills/bitbucket-cloud/) | Bitbucket Cloud via direct REST calls (no MCP, zero dependencies, Windows + POSIX). Repos, commits, pull requests, tasks, Pipelines, webhooks, permissions, issues, plus an API-token scope guide. |
 | [`agent-harness`](skills/agent-harness/) | Designs a harness — a team of specialist agents plus the skills they follow — for a project, from a one-sentence domain description. Agentic-tool-agnostic: uses three portable execution primitives (checklist-driven delegation, file-mediated coordination, one-shot delegation) instead of any single vendor's orchestration API. A derivative of [revfactory/harness](https://github.com/revfactory/harness) (Apache-2.0; see the skill's `NOTICE`). |
 | [`agent-harness-evolve`](skills/agent-harness-evolve/) | Retrospects on a running `agent-harness` harness and feeds generalized feedback back into its agents, skills, and change log. |
 
