@@ -195,9 +195,13 @@ def request(method, path_or_url, *, params=None, body=None, raw=False):
         return text
 
 
+# Some endpoints (e.g. pullrequests) reject pagelen > 50 with HTTP 400.
+MAX_PAGELEN = 50
+
+
 def paginate(path, params=None, limit=100):
     params = dict(params or {})
-    params.setdefault("pagelen", max(1, min(limit, 100)))
+    params.setdefault("pagelen", max(1, min(limit, MAX_PAGELEN)))
     items = []
     page = request("GET", path, params=params)
     while True:

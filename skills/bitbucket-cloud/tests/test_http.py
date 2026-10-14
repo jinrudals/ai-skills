@@ -69,6 +69,11 @@ class HttpTests(unittest.TestCase):
         self.assertEqual(items, [1, 2])
         self.assertEqual(len(opener.calls), 1)
 
+    def test_paginate_pagelen_capped_at_50(self):
+        opener, _ = self.call([(200, '{"values": []}')], bb.paginate, "/x", limit=100)
+        qs = urllib.parse.parse_qs(urllib.parse.urlparse(opener.calls[0][1]).query)
+        self.assertEqual(qs["pagelen"], ["50"])
+
     def test_paginate_empty_returns_empty_list(self):
         _, items = self.call([(200, '{"values": []}')], bb.paginate, "/x")
         self.assertEqual(items, [])
