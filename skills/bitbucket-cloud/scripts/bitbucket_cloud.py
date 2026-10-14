@@ -533,6 +533,12 @@ def _pr_list(args, cmd):
     return run(cmd, args, params={"state": args.state})
 
 
+def _pr_mine(args, cmd):
+    me = request("GET", "/user")
+    path = f"/workspaces/{quote(workspace(args))}/pullrequests/{quote(me['account_id'])}"
+    return run(cmd, args, params={"state": args.state}, path=path)
+
+
 def _pr_create(args, cmd):
     body = {
         "title": args.title,
@@ -608,6 +614,11 @@ register(Cmd("pr", "list", "GET", PRS, PR_READ, list_result=True, handler=_pr_li
              args=(arg("--state", default="OPEN",
                        choices=("OPEN", "MERGED", "DECLINED", "SUPERSEDED")),),
              help="list pull requests"))
+register(Cmd("pr", "mine", "GET", "/workspaces/{ws}/pullrequests", _scopes("read:pullrequest", "read:user"),
+             list_result=True, handler=_pr_mine,
+             args=(arg("--state", default="OPEN",
+                       choices=("OPEN", "MERGED", "DECLINED", "SUPERSEDED")),),
+             help="list my pull requests across the workspace"))
 register(Cmd("pr", "get", "GET", PRS + "/{id}", PR_READ, help="show a pull request"))
 register(Cmd("pr", "create", "POST", PRS, PR_WRITE, handler=_pr_create,
              args=(arg("--title", required=True), arg("--source", required=True),

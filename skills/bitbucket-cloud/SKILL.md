@@ -58,6 +58,7 @@ python3 scripts/bitbucket_cloud.py commit diff myrepo main..feature/x
 python3 scripts/bitbucket_cloud.py commit file myrepo README.md --ref main
 
 python3 scripts/bitbucket_cloud.py pr list myrepo --state OPEN
+python3 scripts/bitbucket_cloud.py pr mine --state OPEN   # my PRs across the workspace, one call
 python3 scripts/bitbucket_cloud.py pr create myrepo --title "Fix" --source feature/x --dest main --body-file desc.md
 python3 scripts/bitbucket_cloud.py pr diff myrepo 12
 python3 scripts/bitbucket_cloud.py pr comment-add myrepo 12 --body "LGTM" --parent 345
@@ -76,6 +77,11 @@ python3 scripts/bitbucket_cloud.py api GET /repositories/myworkspace/myrepo/pull
 
 Quote UUIDs (`{…}`) in PowerShell and bash. Long text: use `--body-file`
 (`-` reads stdin, UTF-8 safe).
+
+## Gotchas
+
+- For "my PRs" use `pr mine`. Do not call `/pullrequests/{user}` (deprecated,
+  404) or loop over every repo.
 
 ## Safety rules
 
