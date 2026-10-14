@@ -12,6 +12,16 @@ is one self-contained skill.
 | [`agent-harness`](skills/agent-harness/) | Designs a harness — a team of specialist agents plus the skills they follow — for a project, from a one-sentence domain description. Agentic-tool-agnostic: uses three portable execution primitives (checklist-driven delegation, file-mediated coordination, one-shot delegation) instead of any single vendor's orchestration API. A derivative of [revfactory/harness](https://github.com/revfactory/harness) (Apache-2.0; see the skill's `NOTICE`). |
 | [`agent-harness-evolve`](skills/agent-harness-evolve/) | Retrospects on a running `agent-harness` harness and feeds generalized feedback back into its agents, skills, and change log. |
 
+## PR checks
+
+`.github/workflows/pr-checks.yml` runs on every pull request to `main`:
+
+- **skills-structure** — `scripts/validate_skills.py`: each `skills/<name>/` has a `SKILL.md` whose frontmatter `name` matches the directory and `description` is non-empty.
+- **python** — syntax check, `ruff` (errors only), and the `bitbucket-cloud` unit tests.
+- **secrets** — gitleaks over the full history.
+
+Run the structure check locally with `python scripts/validate_skills.py`.
+
 ## Installing a skill
 
 Symlink it into your skills directory. A symlink is picked up without restarting
