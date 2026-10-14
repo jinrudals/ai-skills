@@ -63,6 +63,7 @@ Scope names below omit nothing: each is `<verb>:<resource>:bitbucket`.
 | `repo branch-create` | `write:repository:bitbucket`, `read:repository:bitbucket` |
 | `commit list/get/diff/file` | `read:repository:bitbucket` |
 | `pr list/get/diff/comments/comment-add`, all `task` commands | `read:pullrequest:bitbucket` |
+| `pr mine` | `read:pullrequest:bitbucket`, `read:user:bitbucket` |
 | `pr create/update/approve/request-changes/merge/decline` | `read:pullrequest:bitbucket`, `write:pullrequest:bitbucket` |
 | `pr unapprove` | `write:pullrequest:bitbucket` |
 | `pipeline list/get/log` | `read:pipeline:bitbucket` |

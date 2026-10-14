@@ -12,6 +12,7 @@ Base URL `https://api.bitbucket.org/2.0`. Scopes were verified against
 | repo | `GET /repositories/{ws}`, `R`, `R/refs/branches`, `R/refs/tags`; `POST R/refs/branches` |
 | commit | `R/commits[/{rev}]`, `R/commit/{sha}`, `R/diff/{spec}` (text), `R/src/{ref}/{path}` (text) |
 | pr | `R/pullrequests[/{id}]`, `/diff` (text), `/comments`, `/approve` (POST/DELETE), `/request-changes`, `/merge`, `/decline` |
+| pr (mine) | `GET /workspaces/{ws}/pullrequests/{account_id}` (use `pr mine`) |
 | task | `R/pullrequests/{id}/tasks[/{task_id}]` |
 | pipeline | `R/pipelines/` (trailing slash), `/{uuid}`, `/{uuid}/stopPipeline`, `/{uuid}/steps/`, `/{uuid}/steps/{step}/log` (text) |
 | webhook | `R/hooks[/{uid}]` |
@@ -20,6 +21,10 @@ Base URL `https://api.bitbucket.org/2.0`. Scopes were verified against
 
 ## Behaviour
 
+- **My PRs:** use `pr mine`. The global `GET /pullrequests/{uuid|account_id}`
+  and `GET /user/permissions/repositories` return 404 (deprecated); do not
+  call them or scan repos one by one. The workspace-scoped form works with
+  either a UUID or an `account_id`.
 - **Pagination:** list commands follow the `next` link until `--limit` items
   are collected. Pagination links are only followed on `api.bitbucket.org`.
 - **Text vs JSON:** diffs, file contents and step logs are returned as raw
