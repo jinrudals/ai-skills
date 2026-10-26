@@ -74,6 +74,8 @@ python3 scripts/atlassian_cloud.py jira issue-create --project PROJ --type Task 
 python3 scripts/atlassian_cloud.py jira issue-update PROJ-123 --summary "New title"
 python3 scripts/atlassian_cloud.py jira issue-delete PROJ-123
 python3 scripts/atlassian_cloud.py jira comment-add PROJ-123 "A plain-text comment"
+python3 scripts/atlassian_cloud.py jira comment-get PROJ-123 10001
+python3 scripts/atlassian_cloud.py jira comment-update PROJ-123 10001 "- edited\n- list"
 python3 scripts/atlassian_cloud.py jira transition PROJ-123 --list
 python3 scripts/atlassian_cloud.py jira transition PROJ-123 --to "Done" --comment "closing out"
 python3 scripts/atlassian_cloud.py jira attachment-add PROJ-123 ./report.pdf
@@ -99,9 +101,10 @@ don't guess from exit code alone.
 ## Body-format gotchas (Cloud differs from Server/DC)
 
 - **Jira Cloud fields (`description`, comment bodies) are ADF**, not wiki
-  markup or Markdown. `issue-create`/`issue-update`/`comment-add` auto-wrap
-  plain text into minimal ADF paragraphs (blank line = new paragraph). For
-  lists, links, mentions, or any other rich structure, build ADF by hand and
+  markup or Markdown. `issue-create`/`issue-update`/`comment-add` auto-convert
+  light Markdown into ADF: blank line = new paragraph, `# ` headings,
+  `-`/`*`/`1.` lists (indent to nest), `**bold**`, `` `code` ``, bare URLs. For
+  mentions, tables, panels, or other rich structure, build ADF by hand and
   pass it via `--fields-json` — see `references/api-notes.md`.
 - **Confluence Cloud page bodies are storage format (XHTML-like)**, passed via
   `--body-file`; there is no Markdown body option in this script. Write the

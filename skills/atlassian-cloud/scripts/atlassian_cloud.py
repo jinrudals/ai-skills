@@ -30,6 +30,7 @@ error payloads are already JSON).
 See references/api-notes.md for endpoint details, ADF body format, and CQL/JQL
 positional-argument conventions mirrored from this skill's SKILL.md.
 """
+import re
 import argparse
 import base64
 import json
@@ -227,21 +228,95 @@ def _download(url, kind, out_path):
         _print_result(e.code, e.read())
 
 
+_INLINE_RE = re.compile(r"(\*\*[^*]+\*\*|`[^`]+`|https?://[^\s<>)]+)")
+_LIST_RE = re.compile(r"^(\s*)([-*+]|\d+[.)])\s+(.*)$")
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+
+
+def _inline(text):
+    """Inline markup: **bold**, `code`, bare URLs -> link; rest plain text."""
+    nodes = []
+    for part in _INLINE_RE.split(text):
+        if not part:
+            continue
+        if part.startswith("**") and part.endswith("**") and len(part) > 4:
+            nodes.append({"type": "text", "text": part[2:-2], "marks": [{"type": "strong"}]})
+        elif part.startswith("`") and part.endswith("`") and len(part) > 2:
+            nodes.append({"type": "text", "text": part[1:-1], "marks": [{"type": "code"}]})
+        elif part.startswith(("http://", "https://")):
+            nodes.append({"type": "text", "text": part, "marks": [{"type": "link", "attrs": {"href": part}}]})
+        else:
+            nodes.append({"type": "text", "text": part})
+    return nodes
+
+
+def _paragraph(lines):
+    nodes = []
+    for i, line in enumerate(lines):
+        if i:
+            nodes.append({"type": "hardBreak"})
+        nodes.extend(_inline(line))
+    return {"type": "paragraph", "content": nodes}
+
+
+def _build_list(items, i, indent):
+    """items: [(indent, ordered, text)]. Returns (listNode, next_index)."""
+    ordered = items[i][1]
+    node = {"type": "orderedList" if ordered else "bulletList", "content": []}
+    while i < len(items) and items[i][0] >= indent:
+        ind, _, txt = items[i]
+        if ind > indent:  # deeper than this list level without a parent: treat as sibling
+            ind = indent
+        li = {"type": "listItem", "content": [{"type": "paragraph", "content": _inline(txt)}]}
+        i += 1
+        if i < len(items) and items[i][0] > indent:
+            sub, i = _build_list(items, i, items[i][0])
+            li["content"].append(sub)
+        node["content"].append(li)
+    return node, i
+
+
 def _text_to_adf(text):
-    """Wrap plain text into a minimal Atlassian Document Format paragraph.
-    One paragraph per blank-line-separated block; no rich formatting.
-    Good enough for descriptions/comments composed of plain text. For
-    anything richer (lists, links, mentions), build ADF by hand — see
-    references/api-notes.md."""
-    paragraphs = text.split("\n\n") if text else [""]
-    content = []
-    for para in paragraphs:
-        content.append(
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": para}] if para else [],
-            }
-        )
+    """Convert light Markdown-style text into Atlassian Document Format.
+    Supports: blank-line paragraphs, single newline = line break, `# ` headings,
+    `-`/`*`/`1.` lists with indentation-based nesting, **bold**, `code`, and
+    bare URLs. Anything richer (mentions, panels, tables): build ADF by hand
+    via --fields-json — see references/api-notes.md."""
+    if not text:
+        return {"type": "doc", "version": 1, "content": [{"type": "paragraph", "content": []}]}
+    content, para, items = [], [], []
+
+    def flush_para():
+        if para:
+            content.append(_paragraph(para))
+            para.clear()
+
+    def flush_list():
+        i = 0
+        while i < len(items):
+            node, i = _build_list(items, i, items[i][0])
+            content.append(node)
+        items.clear()
+
+    for line in text.split("\n"):
+        m_list = _LIST_RE.match(line)
+        m_head = _HEADING_RE.match(line)
+        if not line.strip():
+            flush_para()
+            flush_list()
+        elif m_list:
+            flush_para()
+            items.append((len(m_list.group(1).expandtabs(4)), m_list.group(2)[0].isdigit(), m_list.group(3)))
+        elif m_head:
+            flush_para()
+            flush_list()
+            content.append({"type": "heading", "attrs": {"level": len(m_head.group(1))},
+                            "content": _inline(m_head.group(2))})
+        else:
+            flush_list()
+            para.append(line.strip())
+    flush_para()
+    flush_list()
     return {"type": "doc", "version": 1, "content": content}
 
 
@@ -298,6 +373,20 @@ def jira_comment_add(args):
     base = _site_base("jira")
     url = f"{base}/rest/api/3/issue/{urllib.parse.quote(args.key)}/comment"
     status, raw = _request("POST", url, "jira", {"body": _text_to_adf(args.text)})
+    _print_result(status, raw)
+
+
+def jira_comment_get(args):
+    base = _site_base("jira")
+    url = f"{base}/rest/api/3/issue/{urllib.parse.quote(args.key)}/comment/{args.comment_id}"
+    status, raw = _request("GET", url, "jira")
+    _print_result(status, raw)
+
+
+def jira_comment_update(args):
+    base = _site_base("jira")
+    url = f"{base}/rest/api/3/issue/{urllib.parse.quote(args.key)}/comment/{args.comment_id}"
+    status, raw = _request("PUT", url, "jira", {"body": _text_to_adf(args.text)})
     _print_result(status, raw)
 
 
@@ -521,6 +610,17 @@ def build_parser():
     g.add_argument("key")
     g.add_argument("text")
     g.set_defaults(func=jira_comment_add)
+
+    g = jira.add_parser("comment-get")
+    g.add_argument("key")
+    g.add_argument("comment_id")
+    g.set_defaults(func=jira_comment_get)
+
+    g = jira.add_parser("comment-update")
+    g.add_argument("key")
+    g.add_argument("comment_id")
+    g.add_argument("text")
+    g.set_defaults(func=jira_comment_update)
 
     g = jira.add_parser("transition")
     g.add_argument("key")
